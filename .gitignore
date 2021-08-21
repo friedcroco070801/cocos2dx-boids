@@ -16,3 +16,4 @@ win32-build
 buildWin32.bat
 runWin32.bat
 CMakeLists.txt
+**/*.piskel

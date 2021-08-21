@@ -24,6 +24,8 @@
 
 #include "AppDelegate.h"
 #include "Scenes/ExampleScene.h"
+#include <cstdlib>
+#include <ctime>
 
 // #define USE_AUDIO_ENGINE 1
 
@@ -41,6 +43,7 @@ static cocos2d::Size largeResolutionSize = cocos2d::Size(1280, 720);
 
 AppDelegate::AppDelegate()
 {
+    srand((unsigned int) time(0));
 }
 
 AppDelegate::~AppDelegate() 
@@ -81,7 +84,7 @@ bool AppDelegate::applicationDidFinishLaunching() {
     }
 
     // turn on display FPS
-    director->setDisplayStats(true);
+    director->setDisplayStats(false);
 
     // set FPS. the default value is 1.0/60 if you don't call this
     director->setAnimationInterval(1.0f / 60);

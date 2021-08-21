@@ -24,10 +24,14 @@ bool Boid::init(Node* node, float limitSpeed, float x, float y, float dx, float 
     this->limitSpeed = limitSpeed;
     this->x = x;
     this->y = y;
-    this->dx = x;
-    this->dy = y;
+    this->dx = dx;
+    this->dy = dy;
     this->node->setPosition(x, y);
-
+    if (dx != 0.0f || dy != 0.0f) {
+        auto pi = atanf(1.0f) * 4;
+        auto rotation = atan2f(dy, dx) / pi * 180;
+        this->node->setRotation(-rotation);
+    }
     return true;
 }
 
@@ -35,22 +39,29 @@ float Boid::getDistanceTo(Boid* other) {
     return sqrtf((x - other->x) * (x - other->x) + (y - other->y) * (y - other->y));
 }
 
-void Boid::update() {
+void Boid::limitSpeedToMax() {
+    auto speed = sqrtf(dx * dx + dy * dy);
+    dx = (dx / speed) * limitSpeed;
+    dy = (dy / speed) * limitSpeed;
+}
 
+void Boid::update() {
+    limitSpeedToMax();
+    x += dx;
+    y += dy;
+    node->setPosition(x, y);
+    if (dx != 0.0f || dy != 0.0f) {
+        auto pi = atanf(1.0f) * 4;
+        auto rotation = atan2f(dy, dx) / pi * 180;
+        node->setRotation(-rotation);
+    }
 }
 
 // Boids class
 
 Boids* Boids::create(Rect boundary, int population, function<Node*()> singleBoid, float limitSpeed, float radius, float mininumDist, function<float()> x, function<float()> y, function<float()> dx, function<float()> dy) {
-    Boids * ret = new (std::nothrow) Boids;
-    if (ret && ret->init(boundary, population, singleBoid, limitSpeed, radius, mininumDist, x, y, dx, dy))
-    {
-        ret->autorelease();
-    }
-    else
-    {
-        CC_SAFE_DELETE(ret);
-    }
+    auto ret = new (std::nothrow) Boids(boundary, population, singleBoid, limitSpeed, radius, mininumDist, x, y, dx, dy);
+    ret->autorelease();
     return ret;
 }
 
@@ -58,12 +69,16 @@ Boids* Boids::create(Rect boundary, int population, function<Node*()> singleBoid
     return Boids::create(boundary, population, singleBoid, limitSpeed, radius, mininumDist, nullptr, nullptr, nullptr, nullptr);
 }
 
-bool Boids::init(Rect boundary, int population, function<Node*()> singleBoid, float limitSpeed, float radius, float mininumDist, function<float()> x, function<float()> y, function<float()> dx, function<float()> dy) {
+Boids::Boids(Rect boundary, int population, function<Node*()> singleBoid, float limitSpeed, float radius, float mininumDist, function<float()> x, function<float()> y, function<float()> dx, function<float()> dy) : Node() {
     this->boundary = boundary;
     this->limitSpeed = limitSpeed;
     this->radius = radius;
     this->mininumDist = mininumDist;
     this->isRunning = false;
+    coherenceCoef = 0.005f;
+    seperationCoef = 0.1f;
+    alignmentCoef = 0.2f;
+    boundaryFactor = 1.0f;
     
     // Handle non-callable functions
     if (x == nullptr) {
@@ -92,20 +107,25 @@ bool Boids::init(Rect boundary, int population, function<Node*()> singleBoid, fl
 
     // Initialize population
     for (auto i = 0; i < population; i++) {
-        boids.push_back(Boid::create(singleBoid(), limitSpeed, x(), y(), dx(), dy()));
+        auto boid = Boid::create(singleBoid(), limitSpeed, x(), y(), dx(), dy());
+        boids.push_back(boid);
     }
-    return true;
 }
 
-void Boids::setParent(Node* parent) {
+void Boids::setParentForBoids(Node* parent) {
+    parent->addChild(this);
     for (auto boid : boids) {
+        
+        parent->addChild(boid->node);
         parent->addChild(boid);
     }
     this->isRunning = true;
 }
 
 void Boids::removeFromParent() {
+    this->Node::removeFromParent();
     for (auto boid : boids) {
+        boid->node->removeFromParent();
         boid->removeFromParent();
     }
     this->isRunning = false;
@@ -113,20 +133,67 @@ void Boids::removeFromParent() {
 
 void Boids::update() {
     for (auto boid : boids) {
-        boid->update();
+        auto speedChange = updateSpeedCoherence(boid) + updateSpeedSeperation(boid) + updateSpeedAlignment(boid) + updateSpeedBoundary(boid);
+        boid->dx += speedChange.x;
+        boid->dy += speedChange.y;
+        boid->update();  
     }
 }
 
 Vec2 Boids::updateSpeedCoherence(Boid* target) {
-    return Vec2(0.0f, 0.0f);
+    auto res = Vec2(0.0f, 0.0f);
+    auto count = 0;
+    for (auto other : boids) {
+        if (target->getDistanceTo(other) <= radius && other != target) {
+            count += 1;
+            res = res + Vec2(other->x, other->y);
+        }
+    }
+    if (count > 0) {
+        res = res / ((float) count);
+    }
+    return (res - Vec2(target->x, target->y)) * coherenceCoef;
 }
 
 Vec2 Boids::updateSpeedSeperation(Boid* target) {
-    return Vec2(0.0f, 0.0f);
+    auto res = Vec2(0.0f, 0.0f);
+    for (auto other : boids) {
+        if (target->getDistanceTo(other) <= mininumDist) {
+            res = res + Vec2(target->dx, target->dy) - Vec2(other->dx, other->dy);
+        }
+    }
+    return res * seperationCoef;
 }
 
 Vec2 Boids::updateSpeedAlignment(Boid* target) {
-    return Vec2(0.0f, 0.0f);
+    auto res = Vec2(0.0f, 0.0f);
+    auto count = 0;
+    for (auto other : boids) {
+        if (target->getDistanceTo(other) <= radius && target != other) {
+            count += 1;
+            res = res + Vec2(other->dx, other->dy);
+        }
+    }
+    if (count > 0) {
+        res = res / ((float) count);
+    }
+    return (res - Vec2(target->dx, target->dy)) * alignmentCoef;
+}
+
+Vec2 Boids::updateSpeedBoundary(Boid* target) {
+    auto res = Vec2(0.0f, 0.0f);
+    if (target->x < boundary.getMinX()) {
+        res = res + Vec2(boundaryFactor * limitSpeed, 0.0f);
+    } 
+    else if (target->x > boundary.getMaxX()) {
+        res = res + Vec2(-boundaryFactor * limitSpeed, 0.0f);
+    }
+    if (target->y < boundary.getMinY()) {
+        res = res + Vec2(0.0f, boundaryFactor * limitSpeed);
+    } else if (target->y > boundary.getMaxY()) {
+        res = res + Vec2(0.0f, -boundaryFactor * limitSpeed);
+    }
+    return res;
 }
 
 };
