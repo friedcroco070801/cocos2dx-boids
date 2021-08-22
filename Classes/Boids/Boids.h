@@ -7,6 +7,11 @@
 
 namespace boids {
 
+const float COHERENCE_COEF = 0.005f;
+const float SEPERATION_COEF = 0.075f;
+const float ALIGNMENT_COEF = 0.2f;
+const float BOUNDARY_FACTOR = 1.0f;
+
 class Boids;
 
 class Boid : public cocos2d::Node {
@@ -38,7 +43,7 @@ public:
     static Boids* create(cocos2d::Rect boundary, int population, std::function<cocos2d::Node*()> singleBoid, float limitSpeed, float radius, float mininumDist, std::function<float()> x, std::function<float()> y, std::function<float()> dx, std::function<float()> dy);
     static Boids* create(cocos2d::Rect boundary, int population, std::function<cocos2d::Node*()> singleBoid, float limitSpeed, float radius, float mininumDist);
     Boids(cocos2d::Rect boundary, int population, std::function<cocos2d::Node*()> singleBoid, float limitSpeed, float radius, float mininumDist, std::function<float()> x, std::function<float()> y, std::function<float()> dx, std::function<float()> dy);
-    void setParentForBoids(cocos2d::Node* parent);
+    void setParent(cocos2d::Node* parent);
     void removeFromParent();
     void update();
 };

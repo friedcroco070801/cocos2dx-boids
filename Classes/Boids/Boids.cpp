@@ -75,10 +75,10 @@ Boids::Boids(Rect boundary, int population, function<Node*()> singleBoid, float 
     this->radius = radius;
     this->mininumDist = mininumDist;
     this->isRunning = false;
-    coherenceCoef = 0.005f;
-    seperationCoef = 0.1f;
-    alignmentCoef = 0.2f;
-    boundaryFactor = 1.0f;
+    coherenceCoef = COHERENCE_COEF;
+    seperationCoef = SEPERATION_COEF;
+    alignmentCoef = ALIGNMENT_COEF;
+    boundaryFactor = BOUNDARY_FACTOR;
     
     // Handle non-callable functions
     if (x == nullptr) {
@@ -112,31 +112,43 @@ Boids::Boids(Rect boundary, int population, function<Node*()> singleBoid, float 
     }
 }
 
-void Boids::setParentForBoids(Node* parent) {
-    parent->addChild(this);
+void Boids::setParent(Node* parent) {
+    _parent = parent;
+    _transformUpdated = _transformDirty = _inverseDirty = true;
+
     for (auto boid : boids) {
-        
-        parent->addChild(boid->node);
-        parent->addChild(boid);
+        if (parent != nullptr) {
+            parent->addChild(boid->node, this->getLocalZOrder());
+            parent->addChild(boid, this->getLocalZOrder());
+        }
     }
     this->isRunning = true;
 }
 
 void Boids::removeFromParent() {
-    this->Node::removeFromParent();
     for (auto boid : boids) {
         boid->node->removeFromParent();
         boid->removeFromParent();
     }
+    this->Node::removeFromParent();
     this->isRunning = false;
 }
 
 void Boids::update() {
     for (auto boid : boids) {
-        auto speedChange = updateSpeedCoherence(boid) + updateSpeedSeperation(boid) + updateSpeedAlignment(boid) + updateSpeedBoundary(boid);
+        Vec2 speedChange = Vec2(0.0f, 0.0f);
+        speedChange = speedChange + updateSpeedCoherence(boid);
+        speedChange = speedChange + updateSpeedSeperation(boid);
+        speedChange = speedChange + updateSpeedAlignment(boid);
+        speedChange = speedChange + updateSpeedBoundary(boid);
         boid->dx += speedChange.x;
         boid->dy += speedChange.y;
-        boid->update();  
+
+        CCLOG("ax: %f, ay: %f", speedChange.x, speedChange.y);
+    }
+
+    for (auto boid : boids) {
+        boid->update();
     }
 }
 
@@ -144,22 +156,31 @@ Vec2 Boids::updateSpeedCoherence(Boid* target) {
     auto res = Vec2(0.0f, 0.0f);
     auto count = 0;
     for (auto other : boids) {
-        if (target->getDistanceTo(other) <= radius && other != target) {
+        if (target->getDistanceTo(other) <= radius && other != target
+            // && Vec2(target->dx, target->dy).dot(Vec2(other->x - target->x, other->y - target->y)) > 0.0f
+            ) {
             count += 1;
             res = res + Vec2(other->x, other->y);
         }
     }
     if (count > 0) {
-        res = res / ((float) count);
+        res = res * (1.0f / count);
+        return (res - Vec2(target->x, target->y)) * coherenceCoef;
     }
-    return (res - Vec2(target->x, target->y)) * coherenceCoef;
+    return res;
 }
 
 Vec2 Boids::updateSpeedSeperation(Boid* target) {
     auto res = Vec2(0.0f, 0.0f);
     for (auto other : boids) {
-        if (target->getDistanceTo(other) <= mininumDist) {
-            res = res + Vec2(target->dx, target->dy) - Vec2(other->dx, other->dy);
+        if (target->getDistanceTo(other) <= mininumDist && other != target
+            // && Vec2(target->dx, target->dy).dot(Vec2(other->x - target->x, other->y - target->y)) > 0.0f
+            ) {
+            Vec2 pulse = Vec2(target->dx, target->dy) - Vec2(other->dx, other->dy);
+            // if (pulse.length() != 0) {
+            //     pulse = pulse * (mininumDist - pulse.length()) / pulse.length();
+            // }
+            res = res + pulse;
         }
     }
     return res * seperationCoef;
@@ -169,7 +190,9 @@ Vec2 Boids::updateSpeedAlignment(Boid* target) {
     auto res = Vec2(0.0f, 0.0f);
     auto count = 0;
     for (auto other : boids) {
-        if (target->getDistanceTo(other) <= radius && target != other) {
+        if (target->getDistanceTo(other) <= radius && target != other
+            // && Vec2(target->dx, target->dy).dot(Vec2(other->x - target->x, other->y - target->y)) > 0.0f
+            ) {
             count += 1;
             res = res + Vec2(other->dx, other->dy);
         }
@@ -190,7 +213,8 @@ Vec2 Boids::updateSpeedBoundary(Boid* target) {
     }
     if (target->y < boundary.getMinY()) {
         res = res + Vec2(0.0f, boundaryFactor * limitSpeed);
-    } else if (target->y > boundary.getMaxY()) {
+    } 
+    else if (target->y > boundary.getMaxY()) {
         res = res + Vec2(0.0f, -boundaryFactor * limitSpeed);
     }
     return res;

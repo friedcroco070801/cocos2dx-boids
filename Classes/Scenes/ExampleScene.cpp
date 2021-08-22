@@ -45,8 +45,8 @@ bool ExampleScene::init() {
         sprite->setScale(0.8f);
         return sprite;
     };
-    boids = Boids::create(Rect(origin.x, origin.y, visibleSize.width, visibleSize.height), 200, singleBoid, 6.0f, 100.0f, 20.0f);
-    boids->setParentForBoids(this);
+    boids = Boids::create(Rect(origin.x + 20.0f, origin.y + 20.0f, visibleSize.width - 40.0f, visibleSize.height - 40.0f), 150, singleBoid, 6.0f, 100.0f, 20.0f);
+    this->addChild(boids, 1);
 
     auto delay = DelayTime::create(0.01f);
     auto update = CallFunc::create([this](){
